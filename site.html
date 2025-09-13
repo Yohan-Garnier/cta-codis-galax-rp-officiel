@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>CTA CODIS - Galax RP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <link rel="icon" href="data:,">
+  <style>
+    body { background: #f4f7fa; color: #222; font-family: 'Segoe UI', 'Arial Rounded MT Bold', Arial, sans-serif; min-height: 100vh; }
+    .toast { animation: bounceIn 0.6s; }
+    @keyframes bounceIn { 0% {transform: scale(0.8);} 60% {transform: scale(1.1);} 100% {transform: scale(1);} }
+    .modal-bg { background: rgba(0,0,0,0.25); }
+    input, select, textarea { color: #222 !important; background: #fff !important; border-color: #e5e7eb !important; }
+    .tab-btn { transition: background .2s; border: none; }
+    .tab-btn.active { background: linear-gradient(90deg,#0d6efd 60%,#1a82e3 100%); color:#fff !important;}
+    .tab-btn:hover:not(.active) { background: #e5e7eb; }
+    .table th { background: #1a82e3; color: #fff; }
+    .table td { background: #fff; }
+    .priority-Urgent { color: #c00; font-weight:bold; }
+    .priority-Normal { color: #e67e22; font-weight:bold; }
+    .priority-Faible { color: #222; opacity: .7; }
+    .status-En\ cours, .status-Engagé { color: #0d6efd; font-weight:bold; }
+    .status-Clôturé { color: #888; }
+    .status-En\ attente { color: #e67e22; font-weight:bold; }
+    .vehicule-badge { background: #1a82e3; color:#fff; font-size: .85em; border-radius: 4px; padding: 2px 6px; margin-right:2px; }
+    .effectif-badge { background: #1a82e3; color:#fff; border-radius: 4px; padding: 2px 8px; margin-left: 4px; font-size: .85em; }
+    .bg-modal { background: #f4f7fa; }
+    .btn-blue { background: linear-gradient(90deg,#0d6efd 60%,#1a82e3 100%); color:#fff; }
+    .btn-red { background: linear-gradient(90deg,#c00 60%,#e74c3c 100%); color:#fff; }
+    .btn-orange { background: linear-gradient(90deg,#e67e22 60%,#f39c12 100%); color:#fff; }
+    .btn-gray { background: #888; color: #fff; }
+    .btn { font-weight: 500; border-radius: 5px; transition: box-shadow .2s; box-shadow: 0 2px 6px #0002; }
+    .btn:active { box-shadow: none; }
+    .shadow { box-shadow: 0 4px 16px #0001; }
+    .table { border-radius: 8px; overflow: hidden; }
+    .tab-content { border-radius: 12px; box-shadow: 0 2px 12px #0001; }
+    .admin-reseaux-badge { background: #0d6efd; color: #fff; font-weight: bold; border-radius: 4px; padding: 2px 8px; margin-left: 4px;}
+    .rapport-badge { background: #e67e22; color: #fff; border-radius: 4px; padding: 2px 8px; margin-left: 4px; font-size: .85em; }
+    .modal-lg { max-width: 750px; }
+    .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #1a82e3; border-radius: 4px; }
+    .scrollbar-thin { scrollbar-width: thin; }
+  </style>
+</head>
+<body>
+  <audio id="alertSound" src="https://cdn.pixabay.com/audio/2022/07/26/audio_124b5e6dac.mp3" preload="auto"></audio>
+  <div id="app" class="max-w-7xl mx-auto p-4"></div>
+  <script>
+    // --- DATA INIT ---
+    function initData() {
+      if (!localStorage.getItem('users')) {
+        localStorage.setItem('users', JSON.stringify([
+          { username: 'Admin Reseaux', password: 'Yohan2000!', role: 'adminreseaux', grade: 'Administrateur Réseaux', active: true },
+          { username: 'Admin', password: 'AdminGalaxRP', role: 'admin', grade: 'Colonel', active: true },
+          { username: 'CTA1', password: 'cta123', role: 'operator', grade: 'Capitaine', active: true },
+          { username: 'Sapeur1', password: 'sp123', role: 'firefighter', grade: 'Sapeur 1ère Classe', active: true }
+        ]));
+      }
+      if (!localStorage.getItem('interventions')) {
+        localStorage.setItem('interventions', JSON.stringify([]));
+      }
+      if (!localStorage.getItem('vehicles')) {
+        localStorage.setItem('vehicles', JSON.stringify([
+          { id: 'FPT1', type: 'FPT', status: 'Disponible', sector: 'Centre', location: [48.858, 2.347], affectation: null, effectif: [] },
+          { id: 'VSAV1', type: 'VSAV', status: 'Disponible', sector: 'Nord', location: [48.872, 2.356], affectation: null, effectif: [] }
+        ]));
+      }
+      if (!localStorage.getItem('calls')) {
+        localStorage.setItem('calls', JSON.stringify([]));
+      }
+      if (!localStorage.getItem('rapports')) {
+        localStorage.setItem('rapports', JSON.stringify([]));
+      }
+    }
+    // --- UTILS ---
+    function showToast(msg) {
+      let toast = document.createElement('div');
+      toast.className = 'toast fixed top-8 right-6 btn-blue px-4 py-2 rounded shadow-lg z-50';
+      toast.innerText = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+    function playAlert() {
+      let audio = document.getElementById('alertSound');
+      if (audio) audio.play();
+    }
+    // --- AUTH ---
+    function getUsers() { return JSON.parse(localStorage.getItem('users') || '[]'); }
+    function authenticateUser(username, password) {
+      const users = getUsers();
+      return users.find(u => u.username === username && u.password === password && u.active);
+    }
+    function setUsers(users) { localStorage.setItem('users', JSON.stringify(users)); }
+    // --- RENDER ---
+    let currentUser = null;
+    let currentTab = 'dashboard';
+    function render() {
+      const app = document.getElementById('app');
+      app.innerHTML = '';
+      if (!currentUser) {
+        renderLogin(app);
+      } else {
+        renderHeader(app);
+        renderMenu(app);
+        renderTabContent(app);
+      }
+    }
+    function renderLogin(container) {
+      container.innerHTML = `
+        <div class="flex flex-col items-center justify-center min-h-[80vh]">
+          <h1 class="text-4xl font-extrabold mb-2 text-blue-700 drop-shadow">CTA CODIS - Galax RP</h1>
+          <form id="loginForm" class="bg-white rounded shadow-lg p-6 flex flex-col gap-4 w-80 border border-[#e5e7eb]">
+            <input type="text" name="username" placeholder="Identifiant" required class="p-2 rounded border border-[#e5e7eb]"/>
+            <input type="password" name="password" placeholder="Mot de passe" required class="p-2 rounded border border-[#e5e7eb]"/>
+            <button type="submit" class="btn-blue btn font-bold p-2 mt-2">Connexion</button>
+            <div id="loginError" class="text-red-500"></div>
+          </form>
+        </div>
+      `;
+      document.getElementById('loginForm').onsubmit = e => {
+        e.preventDefault();
+        const username = e.target.username.value;
+        const password = e.target.password.value;
+        const user = authenticateUser(username, password);
+        if (!user) {
+          document.getElementById('loginError').innerText = "Identifiant ou mot de passe incorrect.";
+          playAlert();
+        } else {
+          currentUser = user;
+          showToast(`Bienvenue ${user.username} !`);
+          render();
+        }
+      };
+    }
+    function renderHeader(container) {
+      container.insertAdjacentHTML('beforeend', `
+        <div class="flex justify-between items-center mb-6">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl font-extrabold text-blue-700 drop-shadow">CTA CODIS Galax RP</span>
+            <span class="ml-4 text-blue-400 text-lg font-medium">
+              Connecté : ${currentUser.username} (${currentUser.grade})
+              ${currentUser.role === 'adminreseaux' ? '<span class="admin-reseaux-badge">Admin Réseaux</span>' : ''}
+            </span>
+          </div>
+          <button id="logoutBtn" class="btn btn-red px-4 py-1">Déconnexion</button>
+        </div>
+      `);
+      document.getElementById('logoutBtn').onclick = () => {
+        currentUser = null;
+        render();
+      };
+    }
+    function renderMenu(container) {
+      const tabs = [
+        {name:"dashboard",label:"Dashboard",icon:"fa-th-large"},
+        {name:"interventions",label:"Interventions",icon:"fa-clipboard-list"},
+        {name:"vehicles",label:"Véhicules",icon:"fa-truck-fire"},
+        {name:"calls",label:"Appels",icon:"fa-headset"},
+        {name:"rapport",label:"Rapports",icon:"fa-file-alt"},
+        {name:"effectif",label:"Effectif véhicules",icon:"fa-users"}
+      ];
+      let menu = `<div class="flex gap-3 mb-6 flex-wrap">`;
+      for (const tab of tabs) {
+        menu += `<button class="tab-btn ${currentTab===tab.name?'active':''} px-4 py-2 font-semibold rounded flex items-center gap-2" data-tab="${tab.name}">
+          <i class="fa-solid ${tab.icon}"></i> ${tab.label}
+        </button>`;
+      }
+      if (currentUser.role === 'admin' || currentUser.role === 'adminreseaux') {
+        menu += `<button class="tab-btn ${currentTab==='admin'?'active':''} px-4 py-2 font-semibold rounded flex items-center gap-2" style="background:linear-gradient(90deg,#e67e22 60%,#f39c12 100%);color:#fff;" data-tab="admin"><i class="fa-solid fa-user-shield"></i> Administration</button>`;
+      }
+      menu += `</div>`;
+      container.insertAdjacentHTML('beforeend', menu);
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.onclick = () => {
+          currentTab = btn.dataset.tab;
+          render();
+        };
+      });
+    }
+    function renderTabContent(container) {
+      if (currentTab === 'dashboard') renderDashboard(container);
+      if (currentTab === 'interventions') renderInterventions(container);
+      if (currentTab === 'vehicles') renderVehicles(container);
+      if (currentTab === 'calls') renderCalls(container);
+      if (currentTab === 'rapport') renderRapports(container);
+      if (currentTab === 'effectif') renderEffectif(container);
+      if ((currentTab === 'admin') && (currentUser.role === 'admin' || currentUser.role === 'adminreseaux')) renderAdminPanel(container);
+    }
+    // --- Dashboard ---
+    function renderDashboard(container) {
+      const interventions = JSON.parse(localStorage.getItem('interventions') || '[]');
+      const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
+      const nbIntervEnCours = interventions.filter(i => i.status !== 'Clôturé').length;
+      const dispoUnits = vehicles.filter(v => v.status === 'Disponible').length;
+      const nbAgents = getUsers().filter(u => u.active).length;
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-6 shadow">
+          <div class="grid gap-6 grid-cols-1 md:grid-cols-3 mb-6">
+            <div class="btn-blue rounded p-4 shadow">
+              <div class="font-bold text-lg"><i class="fa-solid fa-bell"></i> Interventions actives</div>
+              <div class="text-3xl font-mono mt-2">${nbIntervEnCours}</div>
+            </div>
+            <div class="btn-orange rounded p-4 shadow">
+              <div class="font-bold text-lg"><i class="fa-solid fa-truck-fire"></i> Unités disponibles</div>
+              <div class="text-3xl font-mono mt-2">${dispoUnits}</div>
+            </div>
+            <div class="btn-gray rounded p-4 shadow">
+              <div class="font-bold text-lg"><i class="fa-solid fa-users"></i> Agents connectés</div>
+              <div class="text-3xl font-mono mt-2">${nbAgents}</div>
+            </div>
+          </div>
+          <h2 class="text-xl font-bold text-blue-600 mb-2">Interventions en cours</h2>
+          <ul class="scrollbar-thin max-h-40 overflow-y-auto mb-2">
+            ${interventions.filter(i=>i.status!=='Clôturé').map(i=>`
+              <li class="mb-1">
+                <span class="font-bold">${i.type}</span> - <span>${i.location}</span>
+                <span class="status-${i.status.replace(' ','_')} ml-1">[${i.status}]</span>
+                ${i.vehicles && i.vehicles.length ? `<span class="ml-2">${i.vehicles.map(v=>`<span class="vehicule-badge">${v}</span>`).join('')}</span>` : ''}
+                <button class="btn btn-orange btn-xs rapport-badge" onclick="showRapportFromInt('${i.id}')"><i class="fa fa-file-alt"></i> Rapport</button>
+              </li>
+            `).join('') || '<li class="text-gray-400">Aucune intervention en cours.</li>'}
+          </ul>
+        </div>
+      `);
+    }
+    // --- Interventions ---
+    function renderInterventions(container) {
+      const interventions = JSON.parse(localStorage.getItem('interventions') || '[]');
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow scrollbar-thin">
+          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+            <h2 class="text-xl font-bold text-blue-600">Journal des interventions</h2>
+            ${(currentUser.role!=='firefighter')?`
+              <button id="addIntervBtn" class="btn btn-blue px-3 py-1"><i class="fa-solid fa-plus"></i> Nouvelle intervention</button>
+            `:''}
+          </div>
+          <div class="overflow-x-auto">
+          <table class="w-full table text-sm">
+            <thead>
+              <tr>
+                <th>ID</th><th>Type</th><th>Lieu</th><th>Priorité</th><th>État</th><th>Véhicules</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${interventions.map((i, idx)=>`
+                <tr>
+                  <td>${i.id}</td>
+                  <td>${i.type}</td>
+                  <td>${i.location}</td>
+                  <td class="priority-${i.priority}">${i.priority}</td>
+                  <td class="status-${i.status.replace(' ','_')}">${i.status}</td>
+                  <td>
+                    ${i.vehicles && i.vehicles.length
+                      ? i.vehicles.map(v=>`<span class="vehicule-badge">${v}</span>`).join('')
+                      : '<span class="text-gray-400 text-xs">Aucun</span>'
+                    }
+                  </td>
+                  <td>
+                    <button class="btn btn-orange btn-xs rapport-badge" onclick="showRapportFromInt('${i.id}')"><i class="fa fa-file-alt"></i> Rapport</button>
+                    ${(currentUser.role!=='firefighter')?`
+                      <button class="btn btn-blue px-2 py-1 mr-1" onclick="editIntervention('${i.id}')">Modifier</button>
+                      <button class="btn btn-gray px-2 py-1 mr-1" onclick="closeIntervention('${i.id}')">Clôturer</button>
+                      <button class="btn btn-orange px-2 py-1 mr-1" onclick="affectVehicle('${i.id}')"><i class="fa-solid fa-truck-fire"></i> Affecter véhicule</button>
+                      ${(currentUser.role==='admin' || currentUser.role==='adminreseaux') ? `<button class="btn btn-red px-2 py-1" onclick="deleteIntervention(${idx})"><i class="fa-solid fa-trash"></i></button>`:''}
+                    `:''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      `);
+      if (document.getElementById('addIntervBtn')) {
+        document.getElementById('addIntervBtn').onclick = () => showIntervModal();
+      }
+    }
+    function showIntervModal() {
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Nouvelle intervention</h2>
+          <form id="newIntervForm" class="flex flex-col gap-3">
+            <input type="text" name="type" placeholder="Type d'intervention" required class="p-2 rounded border"/>
+            <input type="text" name="location" placeholder="Lieu" required class="p-2 rounded border"/>
+            <select name="priority" class="p-2 rounded border">
+              <option value="Urgent">Urgent</option>
+              <option value="Normal">Normal</option>
+              <option value="Faible">Faible</option>
+            </select>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Créer</button>
+            <button type="button" id="closeModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeModalBtn').onclick = () => modal.remove();
+      document.getElementById('newIntervForm').onsubmit = e => {
+        e.preventDefault();
+        let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+        const id = 'INT'+(interventions.length+1).toString().padStart(3,'0');
+        interventions.push({
+          id,
+          type: e.target.type.value,
+          location: e.target.location.value,
+          priority: e.target.priority.value,
+          status: 'En cours',
+          created: Date.now(),
+          vehicles: []
+        });
+        localStorage.setItem('interventions', JSON.stringify(interventions));
+        showToast('Intervention créée !');
+        playAlert();
+        modal.remove();
+        render();
+      }
+    }
+    window.editIntervention = function(id) {
+      let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+      let interv = interventions.find(i=>i.id===id);
+      if (!interv) return;
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Modifier intervention ${id}</h2>
+          <form id="editIntervForm" class="flex flex-col gap-3">
+            <input type="text" name="type" value="${interv.type}" required class="p-2 rounded border"/>
+            <input type="text" name="location" value="${interv.location}" required class="p-2 rounded border"/>
+            <select name="priority" class="p-2 rounded border">
+              <option ${interv.priority==='Urgent'?'selected':''}>Urgent</option>
+              <option ${interv.priority==='Normal'?'selected':''}>Normal</option>
+              <option ${interv.priority==='Faible'?'selected':''}>Faible</option>
+            </select>
+            <select name="status" class="p-2 rounded border">
+              <option ${interv.status==='En cours'?'selected':''}>En cours</option>
+              <option ${interv.status==='Engagé'?'selected':''}>Engagé</option>
+              <option ${interv.status==='En attente'?'selected':''}>En attente</option>
+              <option ${interv.status==='Clôturé'?'selected':''}>Clôturé</option>
+            </select>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Sauvegarder</button>
+            <button type="button" id="closeModalBtn2" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeModalBtn2').onclick = () => modal.remove();
+      document.getElementById('editIntervForm').onsubmit = e => {
+        e.preventDefault();
+        interv.type = e.target.type.value;
+        interv.location = e.target.location.value;
+        interv.priority = e.target.priority.value;
+        interv.status = e.target.status.value;
+        localStorage.setItem('interventions', JSON.stringify(interventions));
+        showToast('Intervention modifiée !');
+        modal.remove();
+        render();
+      }
+    }
+    window.closeIntervention = function(id) {
+      let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+      let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+      let interv = interventions.find(i=>i.id===id);
+      if (interv && interv.status!=='Clôturé') {
+        interv.status = 'Clôturé';
+        if (interv.vehicles && interv.vehicles.length > 0) {
+          interv.vehicles.forEach(vehId => {
+            let vehicle = vehicles.find(v => v.id === vehId);
+            if (vehicle) {
+              vehicle.status = 'Disponible';
+              vehicle.affectation = null;
+            }
+          });
+          localStorage.setItem('vehicles', JSON.stringify(vehicles));
+        }
+        localStorage.setItem('interventions', JSON.stringify(interventions));
+        showToast('Intervention clôturée ! Véhicules libérés.');
+        render();
+      }
+    }
+    window.affectVehicle = function(intId) {
+      let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+      let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+      let intervention = interventions.find(i=>i.id===intId);
+      if (!intervention) return;
+      let availableVehicles = vehicles.filter(v => !v.affectation && v.status === 'Disponible');
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-orange-600 mb-4">Affecter un véhicule à ${intId}</h2>
+          <form id="affectVehForm" class="flex flex-col gap-3">
+            <select name="vehicleId" class="p-2 rounded border" required>
+              ${availableVehicles.length ? availableVehicles.map(v =>
+                `<option value="${v.id}">${v.id} [${v.type}] - ${v.sector}</option>`
+              ).join('') : '<option disabled>Aucun véhicule disponible</option>'}
+            </select>
+            <button type="submit" class="btn btn-orange p-2 font-bold">Affecter</button>
+            <button type="button" id="closeAffectModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeAffectModalBtn').onclick = () => modal.remove();
+      document.getElementById('affectVehForm').onsubmit = e => {
+        e.preventDefault();
+        let vehId = e.target.vehicleId.value;
+        intervention.vehicles = intervention.vehicles || [];
+        intervention.vehicles.push(vehId);
+        let vehicle = vehicles.find(v=>v.id===vehId);
+        if (vehicle) {
+          vehicle.affectation = intervention.id;
+          vehicle.status = 'Sur intervention';
+        }
+        localStorage.setItem('interventions', JSON.stringify(interventions));
+        localStorage.setItem('vehicles', JSON.stringify(vehicles));
+        showToast('Véhicule affecté et mis en intervention !');
+        modal.remove();
+        render();
+      }
+    }
+    window.deleteIntervention = function(idx) {
+      let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+      interventions.splice(idx,1);
+      localStorage.setItem('interventions', JSON.stringify(interventions));
+      showToast('Intervention supprimée !');
+      render();
+    }
+    // --- Vehicles ---
+    function renderVehicles(container) {
+      const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow">
+          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+            <h2 class="text-xl font-bold text-blue-600">Gestion du parc véhicules</h2>
+            ${(currentUser.role!=='firefighter')?`
+              <button id="addVehBtn" class="btn btn-blue px-3 py-1"><i class="fa-solid fa-plus"></i> Ajouter véhicule</button>
+            `:''}
+          </div>
+          <div class="overflow-x-auto">
+          <table class="w-full table text-sm">
+            <thead>
+              <tr>
+                <th>ID</th><th>Type</th><th>Statut</th><th>Secteur</th><th>Affectation</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vehicles.map(v=>`
+                <tr>
+                  <td>${v.id}</td>
+                  <td>${v.type}</td>
+                  <td>${v.status}</td>
+                  <td>${v.sector}</td>
+                  <td>${v.affectation ? `<span class="vehicule-badge">${v.affectation}</span>` : '<span class="text-gray-400 text-xs">Aucune</span>'}</td>
+                  <td>
+                    ${(currentUser.role!=='firefighter')?`
+                      <button class="btn btn-blue px-2 py-1 mr-1" onclick="editVehicle('${v.id}')">Modifier</button>
+                      <button class="btn btn-red px-2 py-1" onclick="removeVehicle('${v.id}')"><i class="fa-solid fa-trash"></i></button>
+                    `:''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      `);
+      if (document.getElementById('addVehBtn')) {
+        document.getElementById('addVehBtn').onclick = () => showVehModal();
+      }
+    }
+    function showVehModal() {
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Ajouter un véhicule</h2>
+          <form id="newVehForm" class="flex flex-col gap-3">
+            <input type="text" name="id" placeholder="ID du véhicule" required class="p-2 rounded border"/>
+            <select name="type" class="p-2 rounded border">
+              <option>FPT</option>
+              <option>VSAV</option>
+              <option>EPA</option>
+              <option>VSR</option>
+              <option>CDG</option>
+            </select>
+            <select name="status" class="p-2 rounded border">
+              <option>Disponible</option>
+              <option>Sur intervention</option>
+              <option>En maintenance</option>
+            </select>
+            <input type="text" name="sector" placeholder="Secteur" required class="p-2 rounded border"/>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Ajouter</button>
+            <button type="button" id="closeVehModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeVehModalBtn').onclick = () => modal.remove();
+      document.getElementById('newVehForm').onsubmit = e => {
+        e.preventDefault();
+        let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+        vehicles.push({
+          id: e.target.id.value,
+          type: e.target.type.value,
+          status: e.target.status.value,
+          sector: e.target.sector.value,
+          location: [0,0],
+          affectation: null,
+          effectif: []
+        });
+        localStorage.setItem('vehicles', JSON.stringify(vehicles));
+        showToast('Véhicule ajouté !');
+        modal.remove();
+        render();
+      }
+    }
+    window.editVehicle = function(id) {
+      let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+      let veh = vehicles.find(v=>v.id===id);
+      if (!veh) return;
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Modifier véhicule ${id}</h2>
+          <form id="editVehForm" class="flex flex-col gap-3">
+            <input type="text" name="id" value="${veh.id}" required class="p-2 rounded border"/>
+            <select name="type" class="p-2 rounded border">
+              <option ${veh.type==='FPT'?'selected':''}>FPT</option>
+              <option ${veh.type==='VSAV'?'selected':''}>VSAV</option>
+              <option ${veh.type==='EPA'?'selected':''}>EPA</option>
+              <option ${veh.type==='VSR'?'selected':''}>VSR</option>
+              <option ${veh.type==='CDG'?'selected':''}>CDG</option>
+            </select>
+            <select name="status" class="p-2 rounded border">
+              <option ${veh.status==='Disponible'?'selected':''}>Disponible</option>
+              <option ${veh.status==='Sur intervention'?'selected':''}>Sur intervention</option>
+              <option ${veh.status==='En maintenance'?'selected':''}>En maintenance</option>
+            </select>
+            <input type="text" name="sector" value="${veh.sector}" required class="p-2 rounded border"/>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Sauvegarder</button>
+            <button type="button" id="closeVehModalBtn2" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeVehModalBtn2').onclick = () => modal.remove();
+      document.getElementById('editVehForm').onsubmit = e => {
+        e.preventDefault();
+        veh.id = e.target.id.value;
+        veh.type = e.target.type.value;
+        veh.status = e.target.status.value;
+        veh.sector = e.target.sector.value;
+        localStorage.setItem('vehicles', JSON.stringify(vehicles));
+        showToast('Véhicule modifié !');
+        modal.remove();
+        render();
+      }
+    }
+    window.removeVehicle = function(id) {
+      let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+      vehicles = vehicles.filter(v=>v.id!==id);
+      localStorage.setItem('vehicles', JSON.stringify(vehicles));
+      showToast('Véhicule supprimé !');
+      render();
+    }
+    // --- Effectif véhicules ---
+    function renderEffectif(container) {
+      const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow">
+          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+            <h2 class="text-xl font-bold text-blue-600"><i class="fa fa-users"></i> Effectif véhicules</h2>
+          </div>
+          <div class="overflow-x-auto">
+          <table class="w-full table text-sm">
+            <thead>
+              <tr>
+                <th>ID Véhicule</th><th>Type</th><th>Statut</th><th>Secteur</th><th>Effectif</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vehicles.map(v=>`
+                <tr>
+                  <td>${v.id}</td>
+                  <td>${v.type}</td>
+                  <td>${v.status}</td>
+                  <td>${v.sector}</td>
+                  <td>
+                    ${v.effectif && v.effectif.length ? v.effectif.map(e=>`<span class="effectif-badge">${e}</span>`).join('') : '<span class="text-gray-400 text-xs">Aucun</span>'}
+                  </td>
+                  <td>
+                    <button class="btn btn-blue px-2 py-1" onclick="editEffectif('${v.id}')"><i class="fa fa-user-edit"></i> Modifier</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      `);
+    }
+    window.editEffectif = function(vehId) {
+      let vehicles = JSON.parse(localStorage.getItem('vehicles')||'[]');
+      let veh = vehicles.find(v=>v.id===vehId);
+      if (!veh) return;
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-lg animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Effectif pour ${vehId}</h2>
+          <form id="effectifForm" class="flex flex-col gap-3">
+            <textarea name="effectif" placeholder="Liste des effectifs (séparés par des virgules)" rows="3" class="p-2 rounded border resize-none">${veh.effectif ? veh.effectif.join(', ') : ''}</textarea>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Sauvegarder</button>
+            <button type="button" id="closeEffectifModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeEffectifModalBtn').onclick = () => modal.remove();
+      document.getElementById('effectifForm').onsubmit = e => {
+        e.preventDefault();
+        veh.effectif = e.target.effectif.value.split(',').map(s=>s.trim()).filter(Boolean);
+        localStorage.setItem('vehicles', JSON.stringify(vehicles));
+        showToast('Effectif mis à jour !');
+        modal.remove();
+        render();
+      }
+    };
+    // --- Rapports d'intervention ---
+    function renderRapports(container) {
+      const rapports = JSON.parse(localStorage.getItem('rapports')||'[]');
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow">
+          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+            <h2 class="text-xl font-bold text-orange-600"><i class="fa fa-file-alt"></i> Rapports d'intervention</h2>
+            <button id="addRapportBtn" class="btn btn-orange px-3 py-1"><i class="fa-solid fa-plus"></i> Nouveau rapport</button>
+          </div>
+          <div class="overflow-x-auto">
+          <table class="w-full table text-sm">
+            <thead>
+              <tr><th>ID</th><th>Date</th><th>Type</th><th>Lieu</th><th>Auteur</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              ${rapports.length ? rapports.slice().reverse().map((r, idx)=>`
+                <tr>
+                  <td>${r.intervId || "-"}</td>
+                  <td>${new Date(r.date).toLocaleString()}</td>
+                  <td>${r.type || "-"}</td>
+                  <td>${r.location || "-"}</td>
+                  <td>${r.author}</td>
+                  <td>
+                    <button class="btn btn-blue px-2 py-1" onclick="showRapportDetail(${rapports.length-1-idx})"><i class="fa fa-eye"></i> Voir</button>
+                    ${(currentUser.role === 'adminreseaux' || currentUser.role === 'admin' || currentUser.username === r.author) ? `<button class="btn btn-red px-2 py-1" onclick="deleteRapport(${rapports.length-1-idx})"><i class="fa fa-trash"></i></button>` : ''}
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6" class="text-gray-400 text-center">Aucun rapport enregistré.</td></tr>'}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      `);
+      document.getElementById('addRapportBtn').onclick = () => showRapportModal();
+    }
+    function showRapportModal(linkedInt = null) {
+      let interventions = JSON.parse(localStorage.getItem('interventions')||'[]');
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 modal-lg w-full animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-orange-600 mb-4">Nouveau rapport d'intervention</h2>
+          <form id="rapportForm" class="flex flex-col gap-3">
+            ${linkedInt ? `<input type="hidden" name="linkedInt" value="${linkedInt}"/>` : ''}
+            <select name="intervId" class="p-2 rounded border">
+              <option value="">-- Intervention associée (optionnel) --</option>
+              ${interventions.map(i=>`<option value="${i.id}" ${i.id===linkedInt?'selected':''}>${i.id} - ${i.type} (${i.location})</option>`).join('')}
+            </select>
+            <input type="text" name="type" placeholder="Type d'intervention" required class="p-2 rounded border"/>
+            <input type="text" name="location" placeholder="Lieu" required class="p-2 rounded border"/>
+            <textarea name="details" placeholder="Rapport détaillé (max 2000 caractères)" required maxlength="2000" rows="6" class="p-2 rounded border resize-none"></textarea>
+            <button type="submit" class="btn btn-orange p-2 font-bold">Enregistrer</button>
+            <button type="button" id="closeRapportModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeRapportModalBtn').onclick = () => modal.remove();
+      document.getElementById('rapportForm').onsubmit = e => {
+        e.preventDefault();
+        let rapports = JSON.parse(localStorage.getItem('rapports')||'[]');
+        rapports.push({
+          intervId: e.target.intervId.value || linkedInt || null,
+          type: e.target.type.value,
+          location: e.target.location.value,
+          details: e.target.details.value,
+          date: Date.now(),
+          author: currentUser.username
+        });
+        localStorage.setItem('rapports', JSON.stringify(rapports));
+        showToast('Rapport enregistré !');
+        modal.remove();
+        render();
+      }
+    }
+    function showRapportDetail(idx) {
+      let rapports = JSON.parse(localStorage.getItem('rapports')||'[]');
+      let r = rapports[idx];
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 modal-lg w-full animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-orange-600 mb-4">Rapport d'intervention</h2>
+          <div>
+            <div><b>ID Intervention:</b> ${r.intervId || "-"}</div>
+            <div><b>Date:</b> ${new Date(r.date).toLocaleString()}</div>
+            <div><b>Type:</b> ${r.type}</div>
+            <div><b>Lieu:</b> ${r.location}</div>
+            <div><b>Auteur:</b> ${r.author}</div>
+            <div class="mt-4"><b>Détails:</b><br/><pre class="whitespace-pre-wrap">${r.details}</pre></div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <button type="button" class="btn btn-gray p-2" onclick="this.closest('.modal-bg').remove()">Fermer</button>
+            ${(currentUser.role === 'adminreseaux' || currentUser.role === 'admin' || currentUser.username === r.author) ? `<button class="btn btn-red px-2 py-1" onclick="deleteRapport(${idx})"><i class="fa fa-trash"></i> Supprimer</button>` : ''}
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    window.deleteRapport = function(idx) {
+      let rapports = JSON.parse(localStorage.getItem('rapports')||'[]');
+      rapports.splice(idx,1);
+      localStorage.setItem('rapports', JSON.stringify(rapports));
+      showToast('Rapport supprimé !');
+      render();
+    };
+    // --- Appels radio ---
+    function renderCalls(container) {
+      const calls = JSON.parse(localStorage.getItem('calls')||'[]');
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow">
+          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+            <h2 class="text-xl font-bold text-blue-600"><i class="fa-solid fa-headset"></i> Appels radio / interventions</h2>
+            <button id="addCallBtn" class="btn btn-blue px-3 py-1"><i class="fa-solid fa-plus"></i> Nouvel appel</button>
+          </div>
+          <ul>
+            ${calls.length ? calls.slice().reverse().map((call, idx)=>`
+              <li class="mb-2 border-b border-[#e5e7eb] pb-2 flex justify-between items-center">
+                <div>
+                  <span class="font-bold text-blue-700">${call.code ? call.code + ' - ' : ''}</span>
+                  <span>${call.message}</span>
+                  <span class="ml-2 text-gray-500 text-xs">[${call.user}]</span>
+                  <span class="ml-2 text-xs text-gray-400">${new Date(call.time).toLocaleString()}</span>
+                </div>
+                ${(currentUser.role==='admin' || currentUser.role==='adminreseaux') ? `<button class="btn btn-red px-2 py-1 h-7" onclick="deleteCall(${calls.length-1-idx})"><i class="fa-solid fa-trash"></i></button>`:""}
+              </li>
+            `).join('') : '<li class="text-gray-400">Aucun appel enregistré.</li>'}
+          </ul>
+        </div>
+      `);
+      document.getElementById('addCallBtn').onclick = () => showCallModal();
+    }
+    function showCallModal() {
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-lg animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-blue-700 mb-4">Simuler un appel radio</h2>
+          <form id="callForm" class="flex flex-col gap-3">
+            <select name="code" class="p-2 rounded border">
+              <option value="">-- Code radio --</option>
+              <optgroup label="Codes d'urgence">
+                <option value="10-00">10-00 : Urgence / Alerte générale</option>
+                <option value="10-18">10-18 : Urgence absolue</option>
+                <option value="10-33">10-33 : Assistance urgente</option>
+                <option value="10-99">10-99 : Officier en détresse</option>
+                <option value="Signal 30">Signal 30 : Danger immédiat</option>
+                <option value="Code Rouge">Code Rouge : Situation critique</option>
+              </optgroup>
+              <optgroup label="Statuts d'intervention">
+                <option value="10-08">10-08 : En route</option>
+                <option value="10-23">10-23 : Arrivé sur place</option>
+                <option value="10-97">10-97 : Arrivée sur les lieux</option>
+                <option value="10-84">10-84 : Intervention terminée</option>
+                <option value="RETEX">RETEX : Retour exploitation (fin d'intervention)</option>
+                <option value="10-98">10-98 : Disponible pour intervention</option>
+              </optgroup>
+              <optgroup label="Communications">
+                <option value="10-04">10-04 : Message reçu</option>
+                <option value="10-09">10-09 : Répéter le message</option>
+                <option value="10-20">10-20 : Demande de position</option>
+                <option value="10-36">10-36 : Heure correcte</option>
+                <option value="10-21">10-21 : Contactez par téléphone</option>
+                <option value="10-22">10-22 : Ne tenez pas compte</option>
+              </optgroup>
+              <optgroup label="Types d'incidents">
+                <option value="INC-FEU">INC-FEU : Incendie</option>
+                <option value="SAP">SAP : Secours à personne</option>
+                <option value="AVP">AVP : Accident de la voie publique</option>
+                <option value="INC-DIV">INC-DIV : Incident divers</option>
+                <option value="OPS-DIV">OPS-DIV : Opération diverse</option>
+                <option value="MAT-DAN">MAT-DAN : Matières dangereuses</option>
+                <option value="PROT">PROT : Protection des biens</option>
+              </optgroup>
+              <optgroup label="Statuts personnels">
+                <option value="10-01">10-01 : Prise/Fin de service</option>
+                <option value="10-07">10-07 : Hors service</option>
+                <option value="10-06">10-06 : Occupé</option>
+                <option value="10-19">10-19 : Retour à la caserne</option>
+                <option value="10-41">10-41 : Début de vacation</option>
+                <option value="10-42">10-42 : Fin de vacation</option>
+              </optgroup>
+              <optgroup label="Demandes spéciales">
+                <option value="10-14">10-14 : Transport de personne</option>
+                <option value="10-15">10-15 : Personne en garde à vue</option>
+                <option value="10-54">10-54 : Accident corporel</option>
+                <option value="10-55">10-55 : Conduite en état d'ivresse</option>
+                <option value="Code 3">Code 3 : Réponse d'urgence (gyro + sirène)</option>
+                <option value="Code 2">Code 2 : Réponse urgente (gyrophare uniquement)</option>
+                <option value="Code 1">Code 1 : Réponse normale</option>
+              </optgroup>
+            </select>
+            <textarea name="message" placeholder="Message radio (max 200 caractères)" required maxlength="200" rows="3" class="p-2 rounded border resize-none"></textarea>
+            <button type="submit" class="btn btn-blue p-2 font-bold">Envoyer appel</button>
+            <button type="button" id="closeCallModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeCallModalBtn').onclick = () => modal.remove();
+      document.getElementById('callForm').onsubmit = e => {
+        e.preventDefault();
+        let calls = JSON.parse(localStorage.getItem('calls')||'[]');
+        calls.push({
+          code: e.target.code.value,
+          message: e.target.message.value,
+          user: currentUser.username,
+          time: Date.now()
+        });
+        localStorage.setItem('calls', JSON.stringify(calls));
+        showToast('Appel enregistré !');
+        playAlert();
+        modal.remove();
+        render();
+      }
+    }
+    window.deleteCall = function(idx) {
+      let calls = JSON.parse(localStorage.getItem('calls')||'[]');
+      calls.splice(idx,1);
+      localStorage.setItem('calls', JSON.stringify(calls));
+      showToast('Appel supprimé !');
+      render();
+    }
+    // --- Administration ---
+    function renderAdminPanel(container) {
+      const users = getUsers();
+      container.insertAdjacentHTML('beforeend', `
+        <div class="tab-content bg-white rounded p-4 mb-4 shadow">
+          <h2 class="text-xl font-bold text-orange-600 mb-2"><i class="fa-solid fa-user-shield"></i> Administration</h2>
+          <h3 class="text-lg font-semibold mb-2">Gestion des utilisateurs</h3>
+          <div class="overflow-x-auto">
+          <table class="w-full table text-sm mb-4">
+            <thead>
+              <tr>
+                <th>Nom</th><th>Grade</th><th>Rôle</th><th>Statut</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map((u, idx)=>`
+                <tr>
+                  <td>
+                    ${u.username}
+                    ${u.role==='adminreseaux' ? '<span class="admin-reseaux-badge">Admin Réseaux</span>' : ''}
+                  </td>
+                  <td>${u.grade}</td>
+                  <td>${u.role}</td>
+                  <td>${u.active ? 'Actif' : 'Inactif'}</td>
+                  <td>
+                    ${
+                      (currentUser.role === 'adminreseaux' && idx !== 0) ? `<button class="btn btn-red px-2 py-1" onclick="deleteUser(${idx})"><i class="fa-solid fa-trash"></i></button>` :
+                      (currentUser.role === 'admin' && u.role!=='adminreseaux' && u.role!=='admin') ? `<button class="btn btn-red px-2 py-1" onclick="deleteUser(${idx})"><i class="fa-solid fa-trash"></i></button>` : ''
+                    }
+                    ${
+                      (currentUser.role === 'adminreseaux' && idx !== 0) ?
+                      `<button class="btn btn-blue px-2 py-1" onclick="promoteUser(${idx},'admin')">Nommer Admin</button>
+                       <button class="btn btn-orange px-2 py-1" onclick="promoteUser(${idx},'adminreseaux')">Nommer Admin Réseaux</button>`
+                      : ''
+                    }
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          </div>
+          <button id="addUserBtn" class="btn btn-orange px-3 py-1"><i class="fa-solid fa-user-plus"></i> Ajouter utilisateur</button>
+        </div>
+      `);
+      document.getElementById('addUserBtn').onclick = () => showUserModal();
+    }
+    window.deleteUser = function(idx) {
+      let users = getUsers();
+      if (users[idx].role==='adminreseaux' && idx===0) return showToast("Impossible de supprimer l'Admin Réseaux principal.");
+      if (currentUser.role === 'admin' && (users[idx].role==='admin' || users[idx].role==='adminreseaux')) return showToast("Vous ne pouvez pas supprimer cet administrateur.");
+      users.splice(idx,1);
+      setUsers(users);
+      showToast('Utilisateur supprimé !');
+      render();
+    }
+    window.promoteUser = function(idx, role) {
+      let users = getUsers();
+      if (users[idx].role === role) return showToast("Déjà à ce rôle.");
+      users[idx].role = role;
+      users[idx].grade = role === 'adminreseaux' ? 'Administrateur Réseaux' : 'Colonel';
+      setUsers(users);
+      showToast(`Utilisateur promu au rôle : ${role === 'adminreseaux' ? 'Administrateur Réseaux' : 'Admin'}`);
+      render();
+    }
+    function showUserModal() {
+      let modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-50 modal-bg flex items-center justify-center';
+      modal.innerHTML = `
+        <div class="bg-modal rounded p-6 w-full max-w-md animate-bounceIn shadow">
+          <h2 class="text-lg font-bold text-orange-600 mb-4">Ajouter un utilisateur</h2>
+          <form id="newUserForm" class="flex flex-col gap-3">
+            <input type="text" name="username" placeholder="Nom d'utilisateur" required class="p-2 rounded border"/>
+            <input type="password" name="password" placeholder="Mot de passe" required class="p-2 rounded border"/>
+            <select name="role" class="p-2 rounded border">
+              <option value="firefighter">Sapeur Pompier</option>
+              <option value="operator">Opérateur CTA</option>
+              <option value="admin">Administrateur</option>
+              <option value="adminreseaux">Admin Réseaux</option>
+            </select>
+            <select name="grade" class="p-2 rounded border">
+              <option>Sapeur 2ème Classe</option>
+              <option>Sapeur 1ère Classe</option>
+              <option>Caporal</option>
+              <option>Caporal-Chef</option>
+              <option>Sergent</option>
+              <option>Sergent-Chef</option>
+              <option>Adjudant</option>
+              <option>Adjudant-Chef</option>
+              <option>Lieutenant</option>
+              <option>Capitaine</option>
+              <option>Commandant</option>
+              <option>Lieutenant-Colonel</option>
+              <option>Colonel</option>
+              <option>Administrateur Réseaux</option>
+            </select>
+            <button type="submit" class="btn btn-orange p-2 font-bold">Créer</button>
+            <button type="button" id="closeUserModalBtn" class="btn btn-gray p-2">Annuler</button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('closeUserModalBtn').onclick = () => modal.remove();
+      document.getElementById('newUserForm').onsubmit = e => {
+        e.preventDefault();
+        let users = getUsers();
+        users.push({
+          username: e.target.username.value,
+          password: e.target.password.value,
+          role: e.target.role.value,
+          grade: e.target.grade.value,
+          active: true
+        });
+        setUsers(users);
+        showToast('Utilisateur ajouté !');
+        modal.remove();
+        render();
+      }
+    }
+    function showRapportFromInt(intervId) { showRapportModal(intervId); }
+    // --- SHORTCUTS ---
+    document.addEventListener('keydown', e => {
+      if (!currentUser) return;
+      if (e.ctrlKey && e.key === '1') {currentTab='dashboard';render();}
+      if (e.ctrlKey && e.key === '2') {currentTab='interventions';render();}
+      if (e.ctrlKey && e.key === '3') {currentTab='vehicles';render();}
+      if (e.ctrlKey && e.key === '4') {currentTab='calls';render();}
+      if (e.ctrlKey && e.key === '5') {currentTab='rapport';render();}
+      if (e.ctrlKey && e.key === '6') {currentTab='effectif';render();}
+      if (e.ctrlKey && e.key.toLowerCase() === 'a' && (currentUser.role==='admin' || currentUser.role==='adminreseaux')) {currentTab='admin';render();}
+      if (e.key === 'Escape') render();
+    });
+    setInterval(() => { if (currentUser) render(); }, 30000);
+    initData();
+    render();
+  </script>
+</body>
+</html>
